@@ -1,85 +1,56 @@
-import axios from 'axios'
-import { MessageBox, Message } from 'element-ui'
+/*
+ * @Author: your name
+ * @Date: 2022-04-07 21:54:19
+ * @LastEditTime: 2022-04-13 16:44:43
+ * @LastEditors: Please set LastEditors
+ * @Description: 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ * @FilePath: \hrsaas\src\utils\request.js
+ */
+// import { config } from '@vue/test-utils'
+import router from '@/router'
 import store from '@/store'
-import { getToken } from '@/utils/auth'
+import axios from 'axios'
+import { Message } from 'element-ui'
+import { getTimer } from './auth'
 
-// create an axios instance
+const Timeout = 3600
 const service = axios.create({
-  baseURL: process.env.VUE_APP_BASE_API, // url = base url + request url
-  // withCredentials: true, // send cookies when cross-domain requests
-  timeout: 5000 // request timeout
+  baseURL: process.env.VUE_APP_BASE_API,
+  timeout: 5000
 })
 
-// request interceptor
-service.interceptors.request.use(
-  config => {
-    // do something before request is sent
-
-    if (store.getters.token) {
-      // let each request carry token
-      // ['X-Token'] is a custom headers key
-      // please modify it according to the actual situation
-      config.headers['X-Token'] = getToken()
+// 请求拦截器
+service.interceptors.request.use(config => {
+  if (store.getters.token) {
+    if (timerCheck()) {
+      store.dispatch('user/logout')
+      router.push('/login')
+      return Promise.reject(new Error('token超时了'))
     }
-    return config
-  },
-  error => {
-    // do something with request error
-    console.log(error) // for debug
-    return Promise.reject(error)
   }
-)
+  return config
+},
+(error) => {
+  return Promise.reject(error)
+})
 
-// response interceptor
-service.interceptors.response.use(
-  /**
-   * If you want to get http information such as headers or status
-   * Please return  response => response
-  */
-
-  /**
-   * Determine the request status by custom code
-   * Here is just an example
-   * You can also judge the status by HTTP Status Code
-   */
-  response => {
-    const res = response.data
-
-    // if the custom code is not 20000, it is judged as an error.
-    if (res.code !== 20000) {
-      Message({
-        message: res.message || 'Error',
-        type: 'error',
-        duration: 5 * 1000
-      })
-
-      // 50008: Illegal token; 50012: Other clients logged in; 50014: Token expired;
-      if (res.code === 50008 || res.code === 50012 || res.code === 50014) {
-        // to re-login
-        MessageBox.confirm('You have been logged out, you can cancel to stay on this page, or log in again', 'Confirm logout', {
-          confirmButtonText: 'Re-Login',
-          cancelButtonText: 'Cancel',
-          type: 'warning'
-        }).then(() => {
-          store.dispatch('user/resetToken').then(() => {
-            location.reload()
-          })
-        })
-      }
-      return Promise.reject(new Error(res.message || 'Error'))
-    } else {
-      return res
-    }
-  },
-  error => {
-    console.log('err' + error) // for debug
-    Message({
-      message: error.message,
-      type: 'error',
-      duration: 5 * 1000
-    })
-    return Promise.reject(error)
+// 响应拦截器
+service.interceptors.response.use((response) => {
+  const { data, success, message } = response.data
+  if (success) {
+    return data
+  } else {
+    Message.error(message)
+    return Promise.reject(new Error(message))
   }
-)
+}, (error) => {
+  Message.error(error.message)
+  return Promise.reject(error)
+})
 
+function timerCheck() {
+  const currentTime = Date.now()
+  const timerStamp = getTimer()
+  return (currentTime - timerStamp) / 1000 > Timeout
+}
 export default service
